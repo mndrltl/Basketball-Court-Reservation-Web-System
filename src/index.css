@@ -1,0 +1,74 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #2d4055;
+  --color-primary-container: #44576d;
+  --color-on-primary: #ffffff;
+  --color-on-primary-container: #b9cce6;
+  --color-primary-fixed: #d0e4ff;
+  --color-primary-fixed-dim: #b4c8e2;
+
+  --color-secondary: #466271;
+  --color-secondary-container: #c9e7f8;
+  --color-on-secondary: #ffffff;
+  --color-on-secondary-container: #4c6877;
+  --color-secondary-fixed: #c9e7f8;
+  --color-secondary-fixed-dim: #aecbdc;
+
+  --color-tertiary: #344048;
+  --color-tertiary-container: #4b5760;
+  --color-on-tertiary: #ffffff;
+  --color-tertiary-fixed: #d8e4ef;
+  --color-tertiary-fixed-dim: #bcc8d3;
+
+  --color-surface: #f5faff;
+  --color-surface-dim: #cfdce5;
+  --color-surface-bright: #f5faff;
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-container-low: #e9f5ff;
+  --color-surface-container: #e3f0f9;
+  --color-surface-container-high: #ddeaf3;
+  --color-surface-container-highest: #d7e4ed;
+  --color-surface-variant: #d7e4ed;
+
+  --color-on-surface: #111d24;
+  --color-on-surface-variant: #43474c;
+  --color-inverse-surface: #263239;
+  --color-inverse-on-surface: #e6f3fc;
+
+  --color-outline: #74777d;
+  --color-outline-variant: #c4c6cd;
+  --color-error: #ba1a1a;
+  --color-error-container: #ffdad6;
+  --color-on-error-container: #93000a;
+
+  --font-headline: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-body: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+@layer base {
+  body {
+    font-family: var(--font-body);
+    background-color: var(--color-surface);
+    color: var(--color-on-surface);
+    margin: 0;
+    padding: 0;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-headline);
+  }
+}
+
+.font-headline {
+  font-family: var(--font-headline);
+}
+
+.font-body {
+  font-family: var(--font-body);
+}
+
+/* Tabular figures for timetables & numeric dates */
+.tnum {
+  font-variant-numeric: tabular-nums;
+}

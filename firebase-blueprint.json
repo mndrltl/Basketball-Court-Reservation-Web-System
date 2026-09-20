@@ -1,0 +1,170 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Athletics user profile containing role, identification and credentials",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Unique user ID"
+        },
+        "name": {
+          "type": "string",
+          "description": "Full name"
+        },
+        "email": {
+          "type": "string",
+          "description": "University email"
+        },
+        "studentId": {
+          "type": "string",
+          "description": "Student identification number (e.g. 20240396-C)"
+        },
+        "program": {
+          "type": "string",
+          "description": "Academic program or department"
+        },
+        "yearLevel": {
+          "type": "string",
+          "description": "Year of study"
+        },
+        "avatarUrl": {
+          "type": "string",
+          "description": "Avatar image url"
+        },
+        "eligibility": {
+          "type": "string",
+          "description": "Athletic status"
+        },
+        "isAdmin": {
+          "type": "boolean",
+          "description": "Administrative authority flag"
+        }
+      },
+      "required": ["uid", "name", "email", "isAdmin"]
+    },
+    "Reservation": {
+      "title": "Reservation",
+      "description": "Court reservation booking record",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Reservation ID"
+        },
+        "docket": {
+          "type": "string",
+          "description": "Court reservation docket reference"
+        },
+        "courtName": {
+          "type": "string",
+          "description": "Court name"
+        },
+        "courtSub": {
+          "type": "string",
+          "description": "Court sub location"
+        },
+        "facilityDetail": {
+          "type": "string",
+          "description": "Facility details"
+        },
+        "dateStr": {
+          "type": "string",
+          "description": "Readable booking date"
+        },
+        "isoDate": {
+          "type": "string",
+          "description": "ISO date string"
+        },
+        "timeSlot": {
+          "type": "string",
+          "description": "Booking time slot"
+        },
+        "equipmentSummary": {
+          "type": "string",
+          "description": "Equipment allocated summary"
+        },
+        "equipmentDetails": {
+          "type": "array",
+          "description": "Detailed equipment records"
+        },
+        "checkInLocation": {
+          "type": "string",
+          "description": "Facility check in desk"
+        },
+        "status": {
+          "type": "string",
+          "description": "Booking status"
+        },
+        "studentName": {
+          "type": "string",
+          "description": "Student or assignee name"
+        },
+        "studentId": {
+          "type": "string",
+          "description": "Student ID number"
+        },
+        "studentEmail": {
+          "type": "string",
+          "description": "Student contact email"
+        },
+        "isCheckedIn": {
+          "type": "boolean",
+          "description": "Turnstile checked in status"
+        },
+        "notes": {
+          "type": "string",
+          "description": "Booking notes or requirements"
+        }
+      },
+      "required": ["id", "docket", "courtName", "timeSlot", "status"]
+    },
+    "CourtOption": {
+      "title": "CourtOption",
+      "description": "Athletic court facility",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Court ID"
+        },
+        "name": {
+          "type": "string",
+          "description": "Court display name"
+        },
+        "status": {
+          "type": "string",
+          "description": "Operating status"
+        },
+        "type": {
+          "type": "string",
+          "description": "Sport type"
+        },
+        "surface": {
+          "type": "string",
+          "description": "Court flooring type"
+        },
+        "capacity": {
+          "type": "string",
+          "description": "Player capacity"
+        }
+      },
+      "required": ["id", "name", "status", "type"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profile collection containing athlete and admin records"
+    },
+    "/reservations/{reservationId}": {
+      "schema": "Reservation",
+      "description": "Athletics court bookings collection"
+    },
+    "/courts/{courtId}": {
+      "schema": "CourtOption",
+      "description": "Athletics courts and operating status records"
+    }
+  }
+}

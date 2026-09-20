@@ -1,0 +1,6 @@
+{
+  "name": "Basketball Court Reservation Web System",
+  "description": "Official university athletic facility booking portal for indoor basketball courts, volleyball courts, and equipment lending.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
