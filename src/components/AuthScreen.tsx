@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ASSETS, INITIAL_ADMIN_USER, INITIAL_USER } from '../data/initialData';
 import { UserProfile } from '../types';
+import { loginWithEmail, registerWithEmail } from '../lib/authService';
 
 interface AuthScreenProps {
   onLoginSuccess: (user: UserProfile) => void;
@@ -9,6 +10,7 @@ interface AuthScreenProps {
 export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
   const [activeTab, setActiveTab] = useState<'login' | 'register'>('login');
   const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   // Login form state
   const [loginIdentifier, setLoginIdentifier] = useState('jvillareal@athletics.univ.edu');
@@ -44,8 +46,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
 
   const strength = getPasswordStrength(regPassword);
 
-  const handleLoginSubmit = (e: React.FormEvent) => {
+  const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsLoading(true);
     const isAdminLogin =
       loginIdentifier.toLowerCase().includes('admin') ||
       loginIdentifier.toLowerCase() === 'admin@athletics.univ.edu';
@@ -57,23 +60,22 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
         : 'Validating directory credentials... Redirecting to varsity portal.',
     });
 
-    setTimeout(() => {
-      if (isAdminLogin) {
-        onLoginSuccess({
-          ...INITIAL_ADMIN_USER,
-          email: loginIdentifier,
-        });
-      } else {
-        onLoginSuccess({
-          ...INITIAL_USER,
-          email: loginIdentifier,
-          name: loginIdentifier.includes('jvillareal') ? 'Jamin Villareal' : 'Jordan Mitchell',
-        });
-      }
-    }, 600);
+    try {
+      const userProfile = await loginWithEmail(loginIdentifier, loginPassword);
+      setTimeout(() => {
+        setIsLoading(false);
+        onLoginSuccess(userProfile);
+      }, 500);
+    } catch (err: any) {
+      setIsLoading(false);
+      setFeedback({
+        type: 'error',
+        message: err?.message || 'Login failed. Please check your credentials.',
+      });
+    }
   };
 
-  const handleRegisterSubmit = (e: React.FormEvent) => {
+  const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (regPassword !== regConfirmPassword) {
       setFeedback({
@@ -91,21 +93,25 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
       return;
     }
 
+    setIsLoading(true);
     setFeedback({
       type: 'success',
-      message: 'Account profile submitted! University registrar verified. Welcome to the portal.',
+      message: 'Submitting account profile to university directory...',
     });
 
-    setTimeout(() => {
-      onLoginSuccess({
-        name: regName || 'Jordan Taylor',
-        studentId: regId || '20240892-T',
-        email: regEmail,
-        role: 'Student Member',
-        eligibility: 'Active Full Member',
-        avatarUrl: ASSETS.avatar,
+    try {
+      const userProfile = await registerWithEmail(regName, regId, regEmail, regPassword);
+      setTimeout(() => {
+        setIsLoading(false);
+        onLoginSuccess(userProfile);
+      }, 600);
+    } catch (err: any) {
+      setIsLoading(false);
+      setFeedback({
+        type: 'error',
+        message: err?.message || 'Registration failed. Please try again.',
       });
-    }, 700);
+    }
   };
 
   return (

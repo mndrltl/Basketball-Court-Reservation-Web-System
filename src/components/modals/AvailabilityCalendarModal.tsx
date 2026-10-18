@@ -1,26 +1,35 @@
 import React, { useState } from 'react';
 import { DatePicker } from '../common/DatePicker';
+import { CourtOption, Reservation } from '../../types';
 
 interface AvailabilityCalendarModalProps {
   onClose: () => void;
   onBookCourt: (courtName: string, timeSlot: string) => void;
+  courts?: CourtOption[];
+  reservations?: Reservation[];
 }
 
 export const AvailabilityCalendarModal: React.FC<AvailabilityCalendarModalProps> = ({
   onClose,
   onBookCourt,
+  courts = [],
+  reservations = [],
 }) => {
   const [selectedSport, setSelectedSport] = useState<'all' | 'basketball' | 'volleyball'>('all');
   const [selectedIsoDate, setSelectedIsoDate] = useState<string>('2025-10-24');
   const [formattedDateLabel, setFormattedDateLabel] = useState<string>('Fri, Oct 24, 2025');
 
-  const courts = [
+  const defaultCourts = [
     { id: 'bb1', name: 'Basketball Court 1 (Main Hardwood)', type: 'basketball' },
     { id: 'bb2', name: 'Basketball Court 2 (West Wing Quad)', type: 'basketball' },
     { id: 'bb3', name: 'Basketball Court 3 (Training Annex)', type: 'basketball' },
     { id: 'vb1', name: 'Volleyball Court 1 (South Pavilion)', type: 'volleyball' },
     { id: 'vb2', name: 'Volleyball Court 2 (North Pavilion)', type: 'volleyball' },
   ];
+
+  const courtsList = courts && courts.length > 0
+    ? courts.map(c => ({ id: c.id, name: c.name, type: c.type, status: c.status }))
+    : defaultCourts;
 
   const timeSlots = [
     '08:00 AM',
@@ -32,19 +41,24 @@ export const AvailabilityCalendarModal: React.FC<AvailabilityCalendarModalProps>
     '08:00 PM',
   ];
 
-  // Schedule mock matrix
-  const getSlotStatus = (courtId: string, slotIdx: number) => {
-    if (courtId === 'bb1' && slotIdx === 4) return 'current';
-    if ((courtId === 'bb1' && slotIdx === 3) || (courtId === 'bb2' && slotIdx === 5)) return 'reserved';
-    if (slotIdx === 6) return 'peak';
-    if (courtId === 'vb1' && slotIdx === 2) return 'reserved';
+  // Dynamic slot status derived from actual Firestore reservations
+  const getSlotStatus = (courtName: string, slotStr: string) => {
+    const courtClean = courtName.split(' (')[0];
+    const isBooked = reservations.some(r =>
+      r.isoDate === selectedIsoDate &&
+      r.status !== 'Cancelled by User' &&
+      r.status !== 'Completed' &&
+      (r.courtName.toLowerCase().includes(courtClean.toLowerCase()) || courtClean.toLowerCase().includes(r.courtName.toLowerCase())) &&
+      r.timeSlot.includes(slotStr)
+    );
+    if (isBooked) return 'reserved';
     return 'open';
   };
 
   const filteredCourts =
     selectedSport === 'all'
-      ? courts
-      : courts.filter((c) => c.type === selectedSport);
+      ? courtsList
+      : courtsList.filter((c) => c.type === selectedSport);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#111d24]/60 backdrop-blur-xs animate-in fade-in duration-200">
@@ -171,8 +185,8 @@ export const AvailabilityCalendarModal: React.FC<AvailabilityCalendarModalProps>
                       <span>{court.name}</span>
                     </div>
                   </td>
-                  {timeSlots.map((slot, sIdx) => {
-                    const status = getSlotStatus(court.id, sIdx);
+                  {timeSlots.map((slot) => {
+                    const status = getSlotStatus(court.name, slot);
                     if (status === 'current') {
                       return (
                         <td key={slot} className="py-2 px-2 text-center">

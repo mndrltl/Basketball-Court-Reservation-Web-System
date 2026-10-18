@@ -1,17 +1,22 @@
 import React, { useState } from 'react';
-import { Reservation } from '../../types';
+import { Reservation, CourtOption } from '../../types';
 import { DatePicker } from '../common/DatePicker';
+import { checkLocalBookingConflict } from '../../lib/firestoreService';
 
 interface EditReservationModalProps {
   reservation: Reservation;
   onClose: () => void;
   onSave: (updated: Partial<Reservation>) => void;
+  courts?: CourtOption[];
+  reservations?: Reservation[];
 }
 
 export const EditReservationModal: React.FC<EditReservationModalProps> = ({
   reservation,
   onClose,
   onSave,
+  courts = [],
+  reservations = [],
 }) => {
   const [selectedCourt, setSelectedCourt] = useState(
     reservation.courtName.includes('Volleyball')
@@ -21,15 +26,30 @@ export const EditReservationModal: React.FC<EditReservationModalProps> = ({
   const [selectedDate, setSelectedDate] = useState(reservation.isoDate || '2025-10-24');
   const [selectedSlot, setSelectedSlot] = useState(reservation.timeSlot);
   const [ballCount, setBallCount] = useState(2);
+  const [conflictError, setConflictError] = useState<string | null>(null);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setConflictError(null);
     const courtClean = selectedCourt.split(' (')[0];
     const subClean = selectedCourt.includes('East')
       ? 'East Wing, Hardwood Arena'
       : selectedCourt.includes('West')
       ? 'West Wing, Main Fieldhouse'
       : 'South Pavilion, Olympic Net';
+
+    // Conflict check
+    const conflict = checkLocalBookingConflict(
+      reservations,
+      courtClean,
+      selectedDate,
+      selectedSlot,
+      reservation.id
+    );
+    if (conflict) {
+      setConflictError(`Conflict: ${courtClean} is already booked for ${selectedSlot}. Please choose a different slot.`);
+      return;
+    }
 
     // Format readable date
     let dateFormatted = selectedDate;
@@ -82,6 +102,12 @@ export const EditReservationModal: React.FC<EditReservationModalProps> = ({
         </div>
 
         <form className="space-y-4" onSubmit={handleSubmit}>
+          {conflictError && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700 font-semibold flex items-center gap-2">
+              <span className="material-symbols-outlined text-base">error</span>
+              <span>{conflictError}</span>
+            </div>
+          )}
           <div className="space-y-1">
             <label className="block text-xs font-semibold uppercase text-[#466271]">
               Court Selection

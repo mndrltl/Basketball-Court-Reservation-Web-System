@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { CourtOption, Reservation, UserProfile } from '../types';
 import { COURTS_DATA, ASSETS } from '../data/initialData';
 import { DatePicker } from './common/DatePicker';
+import { computeTimeSlotAvailability, checkLocalBookingConflict, isCourtBookable } from '../lib/firestoreService';
 
 interface ReservationFlowScreenProps {
   user: UserProfile;
@@ -9,6 +10,8 @@ interface ReservationFlowScreenProps {
   focusEquipment?: boolean;
   onConfirmBooking: (newReservation: Reservation) => void;
   onOpenPassModal: () => void;
+  courts?: CourtOption[];
+  reservations?: Reservation[];
 }
 
 export const ReservationFlowScreen: React.FC<ReservationFlowScreenProps> = ({
@@ -17,11 +20,18 @@ export const ReservationFlowScreen: React.FC<ReservationFlowScreenProps> = ({
   focusEquipment = false,
   onConfirmBooking,
   onOpenPassModal,
+  courts = COURTS_DATA,
+  reservations = [],
 }) => {
   const [sportType, setSportType] = useState<'basketball' | 'volleyball'>(initialSport);
 
+  const availableCourts = courts && courts.length > 0 ? courts : COURTS_DATA;
+  const courtsToDisplay = availableCourts.filter((c) => c.type === sportType);
+
   // Selection states
-  const [selectedCourt, setSelectedCourt] = useState<CourtOption>(COURTS_DATA[0]);
+  const [selectedCourt, setSelectedCourt] = useState<CourtOption>(
+    () => courtsToDisplay[0] || COURTS_DATA[0]
+  );
   const [selectedDay, setSelectedDay] = useState<number>(24);
   const [selectedTimeSlot, setSelectedTimeSlot] = useState<string>('04:00 PM – 05:00 PM');
   const [qtyBasketballs, setQtyBasketballs] = useState<number>(2);
@@ -29,50 +39,20 @@ export const ReservationFlowScreen: React.FC<ReservationFlowScreenProps> = ({
   const [agreedToRules, setAgreedToRules] = useState<boolean>(true);
   const [confirmedState, setConfirmedState] = useState<boolean>(false);
   const [showSuccessModal, setShowSuccessModal] = useState<boolean>(false);
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   // Created reservation to display in success modal
   const [lastCreatedReservation, setLastCreatedReservation] = useState<Reservation | null>(null);
 
-  const courtsToDisplay = COURTS_DATA.filter((c) => c.type === sportType);
+  const currentIsoDate = `2025-10-${selectedDay < 10 ? '0' + selectedDay : selectedDay}`;
 
-  const timeSlots = [
-    {
-      id: 'slot-1',
-      time: '01:00 PM – 02:00 PM',
-      label: 'Varsity Practice',
-      status: 'reserved',
-    },
-    {
-      id: 'slot-2',
-      time: '02:00 PM – 03:00 PM',
-      label: 'Standard Reservation',
-      status: 'open',
-    },
-    {
-      id: 'slot-3',
-      time: '03:00 PM – 04:00 PM',
-      label: 'Standard Reservation',
-      status: 'open',
-    },
-    {
-      id: 'slot-4',
-      time: '04:00 PM – 05:00 PM',
-      label: 'Active Slot Selected',
-      status: 'selected',
-    },
-    {
-      id: 'slot-5',
-      time: '05:00 PM – 06:00 PM',
-      label: 'Standard Reservation',
-      status: 'open',
-    },
-    {
-      id: 'slot-6',
-      time: '06:00 PM – 07:00 PM',
-      label: 'Floor Conditioning',
-      status: 'closed',
-    },
-  ];
+  // Dynamically compute available time slots based on reservations in database
+  const dynamicSlots = computeTimeSlotAvailability(
+    reservations,
+    selectedCourt.name,
+    currentIsoDate,
+    selectedTimeSlot
+  );
 
   // Helper for equipment summary text
   const getEquipmentSummary = () => {
@@ -87,8 +67,43 @@ export const ReservationFlowScreen: React.FC<ReservationFlowScreenProps> = ({
   };
 
   const handleConfirmReservation = () => {
+    setValidationError(null);
+
+    // 1. Check student eligibility
+    if (user.eligibility === 'Suspended') {
+      const err = 'Your athletic facility membership is currently Suspended. Reservations cannot be booked.';
+      setValidationError(err);
+      alert(err);
+      return;
+    }
+
+    // 2. Check court condition / maintenance status
+    if (!isCourtBookable(selectedCourt)) {
+      const err = `${selectedCourt.name} is currently marked as ${selectedCourt.status}. Please choose an available court.`;
+      setValidationError(err);
+      alert(err);
+      return;
+    }
+
+    // 3. Check facility regulations agreement
     if (!agreedToRules) {
-      alert('Please agree to the athletic facility rules before confirming.');
+      const err = 'Please agree to the athletic facility rules before confirming.';
+      setValidationError(err);
+      alert(err);
+      return;
+    }
+
+    // 4. Check for double booking conflicts
+    const conflict = checkLocalBookingConflict(
+      reservations,
+      selectedCourt.name,
+      currentIsoDate,
+      selectedTimeSlot
+    );
+    if (conflict) {
+      const err = `Conflict Detected: ${selectedCourt.name} is already booked for ${selectedTimeSlot}. Please pick an open time slot.`;
+      setValidationError(err);
+      alert(err);
       return;
     }
 
@@ -99,7 +114,7 @@ export const ReservationFlowScreen: React.FC<ReservationFlowScreenProps> = ({
       courtSub: selectedCourt.subLocation,
       facilityDetail: `${selectedCourt.name} • ${selectedCourt.badge}`,
       dateStr: `Thursday, Oct ${selectedDay}, 2025`,
-      isoDate: `2025-10-${selectedDay < 10 ? '0' + selectedDay : selectedDay}`,
+      isoDate: currentIsoDate,
       timeSlot: selectedTimeSlot,
       equipmentSummary: getEquipmentSummary(),
       equipmentDetails: [
@@ -454,7 +469,7 @@ export const ReservationFlowScreen: React.FC<ReservationFlowScreenProps> = ({
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3" id="slot-container">
-                      {timeSlots.map((slot) => {
+                      {dynamicSlots.map((slot) => {
                         const isSelected = selectedTimeSlot === slot.time;
                         const isReserved = slot.status === 'reserved' || slot.status === 'closed';
 

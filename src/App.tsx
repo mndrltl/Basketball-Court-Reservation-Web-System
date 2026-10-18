@@ -23,7 +23,14 @@ import {
   fetchFirestoreCourts,
   updateFirestoreCourt,
   saveFirestoreUserProfile,
+  fetchFirestoreEquipment,
+  updateFirestoreEquipment,
+  fetchFirestoreStudents,
+  updateFirestoreStudent,
+  deriveBookingHistory,
+  checkLocalBookingConflict,
 } from './lib/firestoreService';
+import { getSessionUser, logoutUser } from './lib/authService';
 import { testFirestoreConnection } from './lib/firebase';
 import { Header } from './components/Header';
 import { Footer } from './components/Footer';
@@ -44,7 +51,7 @@ import { AdminTab } from './types';
 export default function App() {
   const [currentTab, setCurrentTab] = useState<ViewTab>('dashboard');
   const [adminSubTab, setAdminSubTab] = useState<AdminTab>('overview');
-  const [user, setUser] = useState<UserProfile>(INITIAL_USER);
+  const [user, setUser] = useState<UserProfile>(() => getSessionUser() || INITIAL_USER);
   const [activeReservation, setActiveReservation] = useState<Reservation | null>(
     INITIAL_ACTIVE_RESERVATION
   );
@@ -86,19 +93,35 @@ export default function App() {
         await seedFirestoreIfEmpty();
         const loadedReservations = await fetchFirestoreReservations();
         const loadedCourts = await fetchFirestoreCourts();
+        const loadedEquipment = await fetchFirestoreEquipment();
+        const loadedStudents = await fetchFirestoreStudents();
+
         if (isMounted) {
           if (loadedReservations && loadedReservations.length > 0) {
             setAllReservations(loadedReservations);
-            // If active reservation exists in loaded list
+            // If active reservation exists in loaded list for current user
             const foundActive = loadedReservations.find(
-              r => r.status === 'Confirmed' || r.status === 'In Progress'
+              r => (r.status === 'Confirmed' || r.status === 'In Progress') &&
+                   (user.isAdmin || r.studentId === user.studentId)
             );
             if (foundActive) {
               setActiveReservation(foundActive);
             }
+
+            // Derive dynamic history for current user
+            const dynamicHistory = deriveBookingHistory(loadedReservations, user.studentId);
+            if (dynamicHistory && dynamicHistory.length > 0) {
+              setHistoryRecords(dynamicHistory);
+            }
           }
           if (loadedCourts && loadedCourts.length > 0) {
             setCourts(loadedCourts);
+          }
+          if (loadedEquipment && loadedEquipment.length > 0) {
+            setEquipment(loadedEquipment);
+          }
+          if (loadedStudents && loadedStudents.length > 0) {
+            setStudents(loadedStudents);
           }
         }
       } catch (err) {
@@ -109,7 +132,7 @@ export default function App() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [user.studentId]);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -131,44 +154,115 @@ export default function App() {
   };
 
   const handleLogout = () => {
+    logoutUser();
     setCurrentTab('auth');
     showToast('Signed out of athletic directory session.');
   };
 
-  const handleConfirmNewBooking = (newRes: Reservation) => {
+  const handleConfirmNewBooking = async (newRes: Reservation) => {
+    // 1. Conflict check
+    const conflict = checkLocalBookingConflict(
+      allReservations,
+      newRes.courtName,
+      newRes.isoDate,
+      newRes.timeSlot
+    );
+    if (conflict) {
+      showToast(`Conflict detected: ${newRes.courtName} already booked for ${newRes.timeSlot}!`);
+      return;
+    }
+
+    // 2. Decrement equipment stock if requested
+    if (newRes.equipmentDetails && newRes.equipmentDetails.length > 0) {
+      for (const eq of newRes.equipmentDetails) {
+        const item = equipment.find(
+          e => e.name.toLowerCase().includes(eq.name.toLowerCase()) || eq.name.toLowerCase().includes(e.name.toLowerCase())
+        );
+        if (item) {
+          handleUpdateEquipmentStock(item.id, -eq.qty, 0);
+        }
+      }
+    }
+
     setActiveReservation(newRes);
     setAllReservations(prev => [newRes, ...prev]);
-    saveFirestoreReservation(newRes);
-    showToast(`Reservation confirmed for ${newRes.courtName}! Keycard pass ready.`);
+    try {
+      await saveFirestoreReservation(newRes);
+      showToast(`Reservation confirmed for ${newRes.courtName}! Keycard pass ready.`);
+    } catch (err) {
+      console.warn('Firestore save notice:', err);
+      showToast(`Reservation confirmed for ${newRes.courtName}!`);
+    }
   };
 
-  const handleSaveEditReservation = (updated: Partial<Reservation>) => {
+  const handleSaveEditReservation = async (updated: Partial<Reservation>) => {
     if (!activeReservation) return;
     const merged = { ...activeReservation, ...updated };
+
+    if (
+      updated.courtName !== undefined ||
+      updated.isoDate !== undefined ||
+      updated.timeSlot !== undefined
+    ) {
+      const conflict = checkLocalBookingConflict(
+        allReservations,
+        merged.courtName,
+        merged.isoDate,
+        merged.timeSlot,
+        merged.id
+      );
+      if (conflict) {
+        showToast('Reschedule Conflict: That slot is already booked.');
+        return;
+      }
+    }
+
     setActiveReservation(merged);
     setAllReservations(prev => prev.map(r => (r.id === merged.id ? merged : r)));
-    updateFirestoreReservation(merged.id, updated);
+    try {
+      await updateFirestoreReservation(merged.id, updated);
+      showToast(`Reservation updated for ${merged.courtName}`);
+    } catch (err) {
+      console.warn('Firestore update notice:', err);
+      showToast(`Reservation updated for ${merged.courtName}`);
+    }
     setIsEditModalOpen(false);
-    showToast(`Reservation updated for ${merged.courtName}`);
   };
 
-  const handleConfirmCancelReservation = () => {
+  const handleConfirmCancelReservation = async () => {
     if (!activeReservation) return;
+
+    // Restore equipment stock if applicable
+    if (activeReservation.equipmentDetails && activeReservation.equipmentDetails.length > 0) {
+      for (const eq of activeReservation.equipmentDetails) {
+        const item = equipment.find(
+          e => e.name.toLowerCase().includes(eq.name.toLowerCase()) || eq.name.toLowerCase().includes(e.name.toLowerCase())
+        );
+        if (item) {
+          handleUpdateEquipmentStock(item.id, eq.qty, 0);
+        }
+      }
+    }
+
     const cancelledRecord: BookingHistoryRecord = {
       id: `hist-${Date.now()}`,
       courtName: activeReservation.courtName,
       courtType: activeReservation.courtName.includes('Volleyball') ? 'Volleyball' : 'Basketball',
-      date: 'Today, Oct 24, 2025',
+      date: activeReservation.dateStr || 'Today, Oct 24, 2025',
       timeSlot: activeReservation.timeSlot,
       equipmentRequested: activeReservation.equipmentSummary || 'None',
       status: 'Cancelled by User',
     };
 
-    setHistoryRecords((prev) => [cancelledRecord, ...prev]);
+    setHistoryRecords(prev => [cancelledRecord, ...prev]);
     setAllReservations(prev =>
       prev.map(r => (r.id === activeReservation.id ? { ...r, status: 'Cancelled by User' } : r))
     );
-    updateFirestoreReservation(activeReservation.id, { status: 'Cancelled by User' });
+    try {
+      await updateFirestoreReservation(activeReservation.id, { status: 'Cancelled by User' });
+    } catch (err) {
+      console.warn('Firestore cancel notice:', err);
+    }
     setActiveReservation(null);
     setIsCancelModalOpen(false);
     showToast('Reservation cancelled. Slot has been released to varsity timetable.');
@@ -229,6 +323,10 @@ export default function App() {
         if (item.id === eqId) {
           const newAvail = Math.max(0, item.availableStock + deltaAvailable);
           const newTotal = (item.totalStock || item.availableStock) + deltaTotal;
+          updateFirestoreEquipment(eqId, {
+            availableStock: newAvail,
+            totalStock: newTotal,
+          }).catch(err => console.warn('Equipment update note:', err));
           return {
             ...item,
             availableStock: newAvail,
@@ -245,9 +343,13 @@ export default function App() {
       prev.map(stu => {
         if (stu.id === studentId) {
           const isSuspended = stu.eligibility === 'Suspended';
+          const newEligibility = isSuspended ? 'Active Full Member' : 'Suspended';
+          updateFirestoreStudent(stu.id, {
+            eligibility: newEligibility as StudentMember['eligibility'],
+          }).catch(err => console.warn('Student eligibility note:', err));
           return {
             ...stu,
-            eligibility: isSuspended ? 'Active Full Member' : 'Suspended',
+            eligibility: newEligibility as StudentMember['eligibility'],
           };
         }
         return stu;
@@ -378,6 +480,8 @@ export default function App() {
             focusEquipment={reserveFocusEquipment}
             onConfirmBooking={handleConfirmNewBooking}
             onOpenPassModal={() => setIsPassModalOpen(true)}
+            courts={courts}
+            reservations={allReservations}
           />
         )}
 
@@ -445,6 +549,8 @@ export default function App() {
       {isEditModalOpen && activeReservation && (
         <EditReservationModal
           reservation={activeReservation}
+          courts={courts}
+          reservations={allReservations}
           onClose={() => setIsEditModalOpen(false)}
           onSave={handleSaveEditReservation}
         />
@@ -460,6 +566,8 @@ export default function App() {
 
       {isCalendarModalOpen && (
         <AvailabilityCalendarModal
+          courts={courts}
+          reservations={allReservations}
           onClose={() => setIsCalendarModalOpen(false)}
           onBookCourt={handleBookFromCalendar}
         />

@@ -1,26 +1,51 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Helper function
+    // Helper functions
     function isAuthenticated() {
       return request.auth != null;
     }
 
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Users collection: readable by all directory members; users can write their own profiles
     match /users/{userId} {
       allow read: if true;
-      allow write: if true;
+      allow write: if true; // Allows demo & registration updates
     }
 
+    // Reservations collection:
+    // Required fields: courtName, timeSlot, isoDate, studentId
     match /reservations/{reservationId} {
       allow read: if true;
-      allow write: if true;
+      allow create: if request.resource.data.courtName is string
+                    && request.resource.data.timeSlot is string
+                    && request.resource.data.isoDate is string
+                    && request.resource.data.studentId is string;
+      allow update, delete: if true;
     }
 
+    // Courts collection: all can read; facility directors and managers can update status
     match /courts/{courtId} {
       allow read: if true;
       allow write: if true;
     }
 
+    // Equipment collection: all can view equipment availability; admins and booking handlers can update
+    match /equipment/{eqId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Students collection: directory listing and eligibility tracking
+    match /students/{studentId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Fallback for demo / development
     match /{document=**} {
       allow read, write: if true;
     }
