@@ -41,8 +41,10 @@ export const AvailabilityCalendarModal: React.FC<AvailabilityCalendarModalProps>
     '08:00 PM',
   ];
 
+  type SlotStatus = 'current' | 'reserved' | 'peak' | 'open';
+
   // Dynamic slot status derived from actual Firestore reservations
-  const getSlotStatus = (courtName: string, slotStr: string) => {
+  const getSlotStatus = (courtName: string, slotStr: string): SlotStatus => {
     const courtClean = courtName.split(' (')[0];
     const isBooked = reservations.some(r =>
       r.isoDate === selectedIsoDate &&
@@ -51,7 +53,23 @@ export const AvailabilityCalendarModal: React.FC<AvailabilityCalendarModalProps>
       (r.courtName.toLowerCase().includes(courtClean.toLowerCase()) || courtClean.toLowerCase().includes(r.courtName.toLowerCase())) &&
       r.timeSlot.includes(slotStr)
     );
-    if (isBooked) return 'reserved';
+    if (isBooked) {
+      const activeRes = reservations.find(r =>
+        r.isoDate === selectedIsoDate &&
+        r.status === 'In Progress' &&
+        (r.courtName.toLowerCase().includes(courtClean.toLowerCase()) || courtClean.toLowerCase().includes(r.courtName.toLowerCase())) &&
+        r.timeSlot.includes(slotStr)
+      );
+      if (activeRes) {
+        return 'current';
+      }
+      return 'reserved';
+    }
+
+    if (slotStr === '06:00 PM' || slotStr === '08:00 PM') {
+      return 'peak';
+    }
+
     return 'open';
   };
 
