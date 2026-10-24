@@ -1,34 +1,68 @@
 import React, { useState } from 'react';
-import { ASSETS, INITIAL_ADMIN_USER, INITIAL_USER } from '../data/initialData';
-import { UserProfile } from '../types';
+import { Eye, EyeOff } from 'lucide-react';
+import { BasketballLogo } from './BasketballLogo';
+import type { UserProfile } from '../types';
 import { loginWithEmail, registerWithEmail } from '../lib/authService';
+import { ApiError } from '../lib/apiClient';
+import {
+  getRegistrationErrors,
+  isValidEmail,
+  isValidName,
+  isValidPassword,
+  isValidStudentId,
+  isValidUniversityEmail
+} from '../lib/validation';
+import type { AuthField, AuthFieldErrors } from '../lib/validation';
 
 interface AuthScreenProps {
   onLoginSuccess: (user: UserProfile) => void;
+  systemError?: string | null;
 }
 
-export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
+export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess, systemError }) => {
   const [activeTab, setActiveTab] = useState<'login' | 'register'>('login');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
   // Login form state
-  const [loginIdentifier, setLoginIdentifier] = useState('jvillareal@athletics.univ.edu');
-  const [loginPassword, setLoginPassword] = useState('VarsityPlayer#2025');
-  const [rememberDevice, setRememberDevice] = useState(true);
+  const [loginIdentifier, setLoginIdentifier] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
 
   // Register form state
-  const [regName, setRegName] = useState('Jordan Taylor');
-  const [regId, setRegId] = useState('ID-882190');
-  const [regEmail, setRegEmail] = useState('jtaylor@athletics.univ.edu');
+  const [regName, setRegName] = useState('');
+  const [regId, setRegId] = useState('');
+  const [regEmail, setRegEmail] = useState('');
   const [regPassword, setRegPassword] = useState('');
   const [regConfirmPassword, setRegConfirmPassword] = useState('');
+  const [showRegPassword, setShowRegPassword] = useState(false);
+  const [showRegConfirmPassword, setShowRegConfirmPassword] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<AuthFieldErrors>({});
 
   // Feedback toast state
   const [feedback, setFeedback] = useState<{
     type: 'success' | 'error';
     message: string;
   } | null>(null);
+
+  const clearFieldError = (field: AuthField, value: string) => {
+    const valid = field === 'name'
+      ? isValidName(value)
+      : field === 'studentId'
+        ? isValidStudentId(value)
+        : field === 'email'
+            ? activeTab === 'register' ? isValidUniversityEmail(value) : isValidEmail(value)
+          : field === 'password'
+            ? isValidPassword(value)
+            : value === regPassword;
+    if (!valid) return;
+
+    setFieldErrors(previous => {
+      if (!previous[field]) return previous;
+      const next = { ...previous };
+      delete next[field];
+      return next;
+    });
+  };
 
   // Password strength calculation
   const getPasswordStrength = (val: string) => {
@@ -48,69 +82,67 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
 
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const errors: AuthFieldErrors = {};
+    if (!isValidEmail(loginIdentifier)) {
+      errors.email = 'Enter a valid email address.';
+    }
+    if (!loginPassword) {
+      errors.password = 'Enter your password.';
+    }
+    setFieldErrors(errors);
+    setFeedback(null);
+    if (Object.keys(errors).length > 0) return;
+
     setIsLoading(true);
-    const isAdminLogin =
-      loginIdentifier.toLowerCase().includes('admin') ||
-      loginIdentifier.toLowerCase() === 'admin@athletics.univ.edu';
-
-    setFeedback({
-      type: 'success',
-      message: isAdminLogin
-        ? 'Validating Administrator credentials... Redirecting to Facilities Management Desk.'
-        : 'Validating directory credentials... Redirecting to varsity portal.',
-    });
-
     try {
-      const userProfile = await loginWithEmail(loginIdentifier, loginPassword);
-      setTimeout(() => {
-        setIsLoading(false);
-        onLoginSuccess(userProfile);
-      }, 500);
-    } catch (err: any) {
-      setIsLoading(false);
+      const userProfile = await loginWithEmail(loginIdentifier.trim(), loginPassword);
+      onLoginSuccess(userProfile);
+    } catch (error) {
+      if (error instanceof ApiError) {
+        setFieldErrors({
+          email: error.fieldErrors.email,
+          password: error.fieldErrors.password,
+          name: error.fieldErrors.name,
+          studentId: error.fieldErrors.studentId,
+          confirmPassword: error.fieldErrors.confirmPassword
+        });
+      }
       setFeedback({
         type: 'error',
-        message: err?.message || 'Login failed. Please check your credentials.',
+        message: error instanceof Error ? error.message : 'Login failed. Please try again.'
       });
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (regPassword !== regConfirmPassword) {
-      setFeedback({
-        type: 'error',
-        message: 'Passwords do not match. Please verify both fields.',
-      });
-      return;
-    }
-
-    if (regPassword.length < 8) {
-      setFeedback({
-        type: 'error',
-        message: 'Password must be at least 8 characters long.',
-      });
-      return;
-    }
+    const errors = getRegistrationErrors(regName, regId, regEmail, regPassword, regConfirmPassword);
+    setFieldErrors(errors);
+    setFeedback(null);
+    if (Object.keys(errors).length > 0) return;
 
     setIsLoading(true);
-    setFeedback({
-      type: 'success',
-      message: 'Submitting account profile to university directory...',
-    });
-
     try {
       const userProfile = await registerWithEmail(regName, regId, regEmail, regPassword);
-      setTimeout(() => {
-        setIsLoading(false);
-        onLoginSuccess(userProfile);
-      }, 600);
-    } catch (err: any) {
-      setIsLoading(false);
+      onLoginSuccess(userProfile);
+    } catch (error) {
+      if (error instanceof ApiError) {
+        setFieldErrors({
+          email: error.fieldErrors.email,
+          password: error.fieldErrors.password,
+          name: error.fieldErrors.name,
+          studentId: error.fieldErrors.studentId,
+          confirmPassword: error.fieldErrors.confirmPassword
+        });
+      }
       setFeedback({
         type: 'error',
-        message: err?.message || 'Registration failed. Please try again.',
+        message: error instanceof Error ? error.message : 'Registration failed. Please try again.'
       });
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -128,11 +160,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
               <div className="flex flex-col space-y-4">
                 <div className="flex items-center space-x-3">
                   <div className="w-12 h-12 rounded-xl bg-[#2d4055] flex items-center justify-center text-white shadow-sm overflow-hidden p-1.5 shrink-0">
-                    <img
-                      alt="Basketball Court Reservation System Logo"
-                      className="w-full h-full object-contain filter invert contrast-200"
-                      src={ASSETS.logo}
-                    />
+                    <BasketballLogo className="w-full h-full" />
                   </div>
                   <div className="flex flex-col">
                     <span className="text-[11px] font-semibold text-[#466271] uppercase tracking-widest">
@@ -153,59 +181,46 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
                   </p>
                 </div>
 
-                {/* Institutional Badges & Operational Indicators */}
+                {/* Sports and booking services */}
                 <div className="grid grid-cols-2 gap-3 pt-2">
                   <div className="bg-[#e3f0f9] p-3 rounded-lg flex flex-col justify-center border border-[#ddeaf3]">
                     <div className="flex items-center space-x-1.5 text-[#2d4055] text-xs font-semibold">
                       <span className="material-symbols-outlined text-base">sports_basketball</span>
-                      <span>Courts 1-8</span>
+                      <span>Basketball</span>
                     </div>
-                    <span className="text-[11px] text-[#466271] mt-0.5">Hardwood FIBA Grade</span>
+                    <span className="text-[11px] text-[#466271] mt-0.5">Court reservations</span>
                   </div>
 
                   <div className="bg-[#e3f0f9] p-3 rounded-lg flex flex-col justify-center border border-[#ddeaf3]">
                     <div className="flex items-center space-x-1.5 text-[#2d4055] text-xs font-semibold">
-                      <span className="material-symbols-outlined text-base">schedule</span>
-                      <span>06:00 - 23:00</span>
+                      <span className="material-symbols-outlined text-base">sports_volleyball</span>
+                      <span>Volleyball</span>
                     </div>
-                    <span className="text-[11px] text-[#466271] mt-0.5">Daily Session Slots</span>
+                    <span className="text-[11px] text-[#466271] mt-0.5">Court reservations</span>
                   </div>
                 </div>
               </div>
 
-              {/* Live Schedule Operational Notice */}
+              {/* Authentication information */}
               <div className="mt-6 pt-4 flex flex-col space-y-2">
                 <div className="bg-[#ddeaf3]/70 p-4 rounded-xl flex flex-col space-y-1.5 border border-[#c4c6cd]/50 shadow-xs">
                   <div className="flex items-center justify-between">
                     <span className="inline-flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-[#2d4055] font-bold">
-                      <span className="w-2 h-2 rounded-full bg-[#2d4055] animate-pulse" />
-                      LIVE SCHEDULE • TODAY
-                    </span>
-                    <span className="text-[11px] px-2 py-0.5 rounded bg-[#44576d] text-white font-semibold">
-                      In Progress
+                      <span className="material-symbols-outlined text-base">verified_user</span>
+                      Secure account access
                     </span>
                   </div>
 
                   <div className="flex flex-col pt-1">
                     <span className="font-headline font-semibold text-base text-[#2d4055]">
-                      Basketball Court 1
+                      Your athletics account
                     </span>
-                    <span className="text-xs text-[#466271]">(Main Hardwood)</span>
+                    <span className="text-xs text-[#466271]">Sign in to manage reservations and profile details.</span>
                   </div>
 
                   <div className="flex items-center space-x-1.5 text-[#466271] text-xs pt-1">
-                    <span className="material-symbols-outlined text-base text-[#2d4055]">schedule</span>
-                    <span>Current Slot: 04:00 PM – 05:00 PM</span>
-                  </div>
-
-                  <div className="flex items-center space-x-1.5 text-[#466271] text-xs">
-                    <span className="material-symbols-outlined text-base text-[#2d4055]">sports_basketball</span>
-                    <span>Loaned: 2 Official Basketballs</span>
-                  </div>
-
-                  <div className="pt-2 border-t border-[#c4c6cd]/40 flex items-center justify-between text-xs mt-1">
-                    <span className="text-[#74777d]">Next Upcoming:</span>
-                    <span className="text-[#2d4055] font-semibold">Volleyball Court 3 (05:00 PM)</span>
+                    <span className="material-symbols-outlined text-base text-[#2d4055]">lock</span>
+                    <span>Sessions are protected by an HTTP-only cookie.</span>
                   </div>
                 </div>
               </div>
@@ -264,55 +279,12 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
                     </div>
 
                     <form className="space-y-4 pt-1" onSubmit={handleLoginSubmit}>
-                      {/* One-click Demo Credentials Bar */}
-                      <div className="p-3 bg-[#e3f0f9]/70 rounded-xl border border-[#ddeaf3] space-y-1.5">
-                        <span className="text-[11px] font-semibold text-[#466271] uppercase tracking-wider block">
-                          Instant Demo Credentials
-                        </span>
-                        <div className="grid grid-cols-2 gap-2">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setLoginIdentifier('jvillareal@athletics.univ.edu');
-                              setLoginPassword('VarsityPlayer#2025');
-                            }}
-                            className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all border ${
-                              loginIdentifier.includes('jvillareal')
-                                ? 'bg-white text-[#2d4055] border-[#2d4055] shadow-xs'
-                                : 'bg-white/60 text-[#466271] border-[#ddeaf3] hover:bg-white'
-                            }`}
-                          >
-                            <span className="material-symbols-outlined text-[15px]">sports_handball</span>
-                            <span>Student Athlete</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setLoginIdentifier('admin@athletics.univ.edu');
-                              setLoginPassword('AdminPass#2025');
-                            }}
-                            className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all border ${
-                              loginIdentifier.includes('admin')
-                                ? 'bg-[#2d4055] text-white border-[#2d4055] shadow-xs'
-                                : 'bg-white/60 text-[#466271] border-[#ddeaf3] hover:bg-white'
-                            }`}
-                          >
-                            <span className="material-symbols-outlined text-[15px]">admin_panel_settings</span>
-                            <span>Facility Admin</span>
-                          </button>
-                        </div>
-                      </div>
-
                       <div className="flex flex-col space-y-1">
                         <label
                           className="text-xs font-semibold text-[#344048] flex items-center justify-between"
                           htmlFor="login-identifier"
                         >
-                          <span>University Email / Account Username</span>
-                          <span className="text-[11px] text-[#74777d] font-normal">
-                            e.g. s123456@univ.edu
-                          </span>
+                          <span>University Email</span>
                         </label>
                         <div className="relative flex items-center">
                           <span className="material-symbols-outlined absolute left-3 text-[#466271] text-lg pointer-events-none">
@@ -321,13 +293,26 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
                           <input
                             id="login-identifier"
                             value={loginIdentifier}
-                            onChange={(e) => setLoginIdentifier(e.target.value)}
-                            placeholder="netid@university.edu or staff ID"
+                            onChange={(e) => {
+                              setLoginIdentifier(e.target.value);
+                              clearFieldError('email', e.target.value);
+                              setFeedback(null);
+                            }}
+                            placeholder="name@university.edu"
                             required
-                            type="text"
-                            className="w-full h-10 pl-10 pr-3 bg-white text-[#111d24] text-sm rounded-lg border border-[#c4c6cd] focus:ring-2 focus:ring-[#44576d] focus:border-transparent outline-none shadow-xs transition-all"
+                            type="email"
+                            aria-invalid={Boolean(fieldErrors.email)}
+                            aria-describedby={fieldErrors.email ? 'login-email-error' : undefined}
+                            className={`w-full h-10 pl-10 pr-3 bg-white text-[#111d24] text-sm rounded-lg border ${
+                              fieldErrors.email ? 'border-[#ba1a1a]' : 'border-[#c4c6cd]'
+                            } focus:ring-2 focus:ring-[#44576d] focus:border-transparent outline-none shadow-xs transition-all`}
                           />
                         </div>
+                        {fieldErrors.email && (
+                          <p id="login-email-error" className="text-xs text-[#ba1a1a]" role="alert">
+                            {fieldErrors.email}
+                          </p>
+                        )}
                       </div>
 
                       <div className="flex flex-col space-y-1">
@@ -354,11 +339,19 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
                           <input
                             id="login-password"
                             value={loginPassword}
-                            onChange={(e) => setLoginPassword(e.target.value)}
+                            onChange={(e) => {
+                              setLoginPassword(e.target.value);
+                              clearFieldError('password', e.target.value);
+                              setFeedback(null);
+                            }}
                             placeholder="••••••••••••"
                             required
                             type={showPassword ? 'text' : 'password'}
-                            className="w-full h-10 pl-10 pr-10 bg-white text-[#111d24] text-sm rounded-lg border border-[#c4c6cd] focus:ring-2 focus:ring-[#44576d] focus:border-transparent outline-none shadow-xs transition-all"
+                            aria-invalid={Boolean(fieldErrors.password)}
+                            aria-describedby={fieldErrors.password ? 'login-password-error' : undefined}
+                            className={`w-full h-10 pl-10 pr-10 bg-white text-[#111d24] text-sm rounded-lg border ${
+                              fieldErrors.password ? 'border-[#ba1a1a]' : 'border-[#c4c6cd]'
+                            } focus:ring-2 focus:ring-[#44576d] focus:border-transparent outline-none shadow-xs transition-all`}
                           />
                           <button
                             type="button"
@@ -370,29 +363,20 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
                             </span>
                           </button>
                         </div>
-                      </div>
-
-                      <div className="flex items-center justify-between pt-1">
-                        <label className="flex items-center space-x-2 cursor-pointer">
-                          <input
-                            id="remember-device"
-                            checked={rememberDevice}
-                            onChange={(e) => setRememberDevice(e.target.checked)}
-                            type="checkbox"
-                            className="w-4 h-4 rounded text-[#44576d] border-[#c4c6cd] focus:ring-0 accent-[#44576d]"
-                          />
-                          <span className="text-xs text-[#466271] select-none">
-                            Remember this device for 30 days
-                          </span>
-                        </label>
+                        {fieldErrors.password && (
+                          <p id="login-password-error" className="text-xs text-[#ba1a1a]" role="alert">
+                            {fieldErrors.password}
+                          </p>
+                        )}
                       </div>
 
                       <button
                         id="btn-login-submit"
                         type="submit"
-                        className="w-full h-11 bg-[#44576d] hover:bg-[#2d4055] text-white text-sm font-semibold rounded-lg transition-all flex items-center justify-center space-x-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#c9e7f8] focus:ring-offset-2 mt-4 cursor-pointer"
+                        disabled={isLoading}
+                        className="w-full h-11 bg-[#44576d] hover:bg-[#2d4055] disabled:opacity-60 disabled:cursor-wait text-white text-sm font-semibold rounded-lg transition-all flex items-center justify-center space-x-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#c9e7f8] focus:ring-offset-2 mt-4 cursor-pointer"
                       >
-                        <span>Log In</span>
+                        <span>{isLoading ? 'Signing in…' : 'Log In'}</span>
                         <span className="material-symbols-outlined text-base">arrow_forward</span>
                       </button>
 
@@ -438,13 +422,26 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
                             <input
                               id="reg-name"
                               value={regName}
-                              onChange={(e) => setRegName(e.target.value)}
+                              onChange={(e) => {
+                                setRegName(e.target.value);
+                                clearFieldError('name', e.target.value);
+                                setFeedback(null);
+                              }}
                               placeholder="Jordan Taylor"
                               required
                               type="text"
-                              className="w-full h-10 pl-10 pr-3 bg-white text-[#111d24] text-sm rounded-lg border border-[#c4c6cd] focus:ring-2 focus:ring-[#44576d] outline-none shadow-xs"
+                              aria-invalid={Boolean(fieldErrors.name)}
+                              aria-describedby={fieldErrors.name ? 'reg-name-error' : undefined}
+                              className={`w-full h-10 pl-10 pr-3 bg-white text-[#111d24] text-sm rounded-lg border ${
+                                fieldErrors.name ? 'border-[#ba1a1a]' : 'border-[#c4c6cd]'
+                              } focus:ring-2 focus:ring-[#44576d] outline-none shadow-xs`}
                             />
                           </div>
+                          {fieldErrors.name && (
+                            <p id="reg-name-error" className="text-xs text-[#ba1a1a]" role="alert">
+                              {fieldErrors.name}
+                            </p>
+                          )}
                         </div>
 
                         <div className="flex flex-col space-y-1">
@@ -458,13 +455,30 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
                             <input
                               id="reg-id"
                               value={regId}
-                              onChange={(e) => setRegId(e.target.value)}
+                              onChange={(e) => {
+                                setRegId(e.target.value);
+                                clearFieldError('studentId', e.target.value);
+                                setFeedback(null);
+                              }}
                               placeholder="20240396-C"
                               required
                               type="text"
-                              className="w-full h-10 pl-10 pr-3 bg-white text-[#111d24] text-sm rounded-lg border border-[#c4c6cd] focus:ring-2 focus:ring-[#44576d] outline-none shadow-xs font-mono"
+                              aria-invalid={Boolean(fieldErrors.studentId)}
+                              aria-describedby={fieldErrors.studentId ? 'reg-id-error' : 'reg-id-hint'}
+                              className={`w-full h-10 pl-10 pr-3 bg-white text-[#111d24] text-sm rounded-lg border ${
+                                fieldErrors.studentId ? 'border-[#ba1a1a]' : 'border-[#c4c6cd]'
+                              } focus:ring-2 focus:ring-[#44576d] outline-none shadow-xs font-mono`}
                             />
                           </div>
+                          {fieldErrors.studentId ? (
+                            <p id="reg-id-error" className="text-xs text-[#ba1a1a]" role="alert">
+                              {fieldErrors.studentId}
+                            </p>
+                          ) : (
+                            <p id="reg-id-hint" className="text-[11px] text-[#74777d]">
+                              Eight digits, hyphen, and one letter.
+                            </p>
+                          )}
                         </div>
                       </div>
 
@@ -474,7 +488,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
                           htmlFor="reg-email"
                         >
                           <span>University Email Address</span>
-                          <span className="text-[11px] text-[#74777d]">Must end in .edu</span>
+                          <span className="text-[11px] text-[#74777d]">Use your university .edu address</span>
                         </label>
                         <div className="relative flex items-center">
                           <span className="material-symbols-outlined absolute left-3 text-[#466271] text-lg pointer-events-none">
@@ -483,13 +497,26 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
                           <input
                             id="reg-email"
                             value={regEmail}
-                            onChange={(e) => setRegEmail(e.target.value)}
+                            onChange={(e) => {
+                              setRegEmail(e.target.value);
+                              clearFieldError('email', e.target.value);
+                              setFeedback(null);
+                            }}
                             placeholder="jtaylor@athletics.univ.edu"
                             required
                             type="email"
-                            className="w-full h-10 pl-10 pr-3 bg-white text-[#111d24] text-sm rounded-lg border border-[#c4c6cd] focus:ring-2 focus:ring-[#44576d] outline-none shadow-xs"
+                            aria-invalid={Boolean(fieldErrors.email)}
+                            aria-describedby={fieldErrors.email ? 'reg-email-error' : undefined}
+                            className={`w-full h-10 pl-10 pr-3 bg-white text-[#111d24] text-sm rounded-lg border ${
+                              fieldErrors.email ? 'border-[#ba1a1a]' : 'border-[#c4c6cd]'
+                            } focus:ring-2 focus:ring-[#44576d] outline-none shadow-xs`}
                           />
                         </div>
+                        {fieldErrors.email && (
+                          <p id="reg-email-error" className="text-xs text-[#ba1a1a]" role="alert">
+                            {fieldErrors.email}
+                          </p>
+                        )}
                       </div>
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -504,13 +531,43 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
                             <input
                               id="reg-password"
                               value={regPassword}
-                              onChange={(e) => setRegPassword(e.target.value)}
-                              placeholder="Min 8 characters"
+                              onChange={(e) => {
+                                setRegPassword(e.target.value);
+                                clearFieldError('password', e.target.value);
+                                if (e.target.value === regConfirmPassword) {
+                                  setFieldErrors(previous => {
+                                    if (!previous.confirmPassword) return previous;
+                                    const next = { ...previous };
+                                    delete next.confirmPassword;
+                                    return next;
+                                  });
+                                }
+                                setFeedback(null);
+                              }}
+                              placeholder="8 to 72 bytes"
                               required
-                              type="password"
-                              className="w-full h-10 pl-10 pr-3 bg-white text-[#111d24] text-sm rounded-lg border border-[#c4c6cd] focus:ring-2 focus:ring-[#44576d] outline-none shadow-xs"
+                              type={showRegPassword ? 'text' : 'password'}
+                              aria-invalid={Boolean(fieldErrors.password)}
+                              aria-describedby={fieldErrors.password ? 'reg-password-error' : undefined}
+                              className={`w-full h-10 pl-10 pr-10 bg-white text-[#111d24] text-sm rounded-lg border ${
+                                fieldErrors.password ? 'border-[#ba1a1a]' : 'border-[#c4c6cd]'
+                              } focus:ring-2 focus:ring-[#44576d] outline-none shadow-xs`}
                             />
+                            <button
+                              type="button"
+                              onClick={() => setShowRegPassword(visible => !visible)}
+                              aria-label={`${showRegPassword ? 'Hide' : 'Show'} account password`}
+                              aria-pressed={showRegPassword}
+                              className="absolute right-2 p-1 text-[#466271] hover:text-[#2d4055] focus-visible:outline-2 focus-visible:outline-[#44576d] rounded"
+                            >
+                              {showRegPassword ? <EyeOff size={18} aria-hidden="true" /> : <Eye size={18} aria-hidden="true" />}
+                            </button>
                           </div>
+                          {fieldErrors.password && (
+                            <p id="reg-password-error" className="text-xs text-[#ba1a1a]" role="alert">
+                              {fieldErrors.password}
+                            </p>
+                          )}
                         </div>
 
                         <div className="flex flex-col space-y-1">
@@ -524,13 +581,35 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
                             <input
                               id="reg-confirm-password"
                               value={regConfirmPassword}
-                              onChange={(e) => setRegConfirmPassword(e.target.value)}
+                              onChange={(e) => {
+                                setRegConfirmPassword(e.target.value);
+                                clearFieldError('confirmPassword', e.target.value);
+                                setFeedback(null);
+                              }}
                               placeholder="Repeat password"
                               required
-                              type="password"
-                              className="w-full h-10 pl-10 pr-3 bg-white text-[#111d24] text-sm rounded-lg border border-[#c4c6cd] focus:ring-2 focus:ring-[#44576d] outline-none shadow-xs"
+                              type={showRegConfirmPassword ? 'text' : 'password'}
+                              aria-invalid={Boolean(fieldErrors.confirmPassword)}
+                              aria-describedby={fieldErrors.confirmPassword ? 'reg-confirm-password-error' : undefined}
+                              className={`w-full h-10 pl-10 pr-10 bg-white text-[#111d24] text-sm rounded-lg border ${
+                                fieldErrors.confirmPassword ? 'border-[#ba1a1a]' : 'border-[#c4c6cd]'
+                              } focus:ring-2 focus:ring-[#44576d] outline-none shadow-xs`}
                             />
+                            <button
+                              type="button"
+                              onClick={() => setShowRegConfirmPassword(visible => !visible)}
+                              aria-label={`${showRegConfirmPassword ? 'Hide' : 'Show'} confirm password`}
+                              aria-pressed={showRegConfirmPassword}
+                              className="absolute right-2 p-1 text-[#466271] hover:text-[#2d4055] focus-visible:outline-2 focus-visible:outline-[#44576d] rounded"
+                            >
+                              {showRegConfirmPassword ? <EyeOff size={18} aria-hidden="true" /> : <Eye size={18} aria-hidden="true" />}
+                            </button>
                           </div>
+                          {fieldErrors.confirmPassword && (
+                            <p id="reg-confirm-password-error" className="text-xs text-[#ba1a1a]" role="alert">
+                              {fieldErrors.confirmPassword}
+                            </p>
+                          )}
                         </div>
                       </div>
 
@@ -580,17 +659,18 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
                           />
                         </div>
                         <span className="text-[11px] text-[#74777d]">
-                          Minimum 8 characters with at least one number and uppercase symbol.
+                          Use at least 8 characters. Passwords are case-sensitive.
                         </span>
                       </div>
 
                       <button
                         id="btn-register-submit"
                         type="submit"
-                        className="w-full h-11 bg-[#44576d] hover:bg-[#2d4055] text-white text-sm font-semibold rounded-lg transition-all flex items-center justify-center space-x-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#c9e7f8] focus:ring-offset-2 mt-2 cursor-pointer"
+                        disabled={isLoading}
+                        className="w-full h-11 bg-[#44576d] hover:bg-[#2d4055] disabled:opacity-60 disabled:cursor-wait text-white text-sm font-semibold rounded-lg transition-all flex items-center justify-center space-x-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#c9e7f8] focus:ring-offset-2 mt-2 cursor-pointer"
                       >
                         <span className="material-symbols-outlined text-base">how_to_reg</span>
-                        <span>Create Account</span>
+                        <span>{isLoading ? 'Creating account…' : 'Create Account'}</span>
                       </button>
 
                       <div className="text-center pt-1">
@@ -625,6 +705,14 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
                     {feedback.type === 'error' ? 'error' : 'task_alt'}
                   </span>
                   <span className="flex-1">{feedback.message}</span>
+                </div>
+              )}
+              {systemError && (
+                <div
+                  className="mt-4 p-3 rounded-lg bg-[#ffdad6] text-[#93000a] border border-[#ffdad6] text-xs font-medium"
+                  role="alert"
+                >
+                  {systemError}
                 </div>
               )}
             </div>

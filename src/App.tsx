@@ -6,8 +6,6 @@
 import React, { useState, useEffect } from 'react';
 import { ViewTab, UserProfile, Reservation, BookingHistoryRecord, CourtOption, EquipmentLoanItem, StudentMember } from './types';
 import {
-  INITIAL_USER,
-  INITIAL_ADMIN_USER,
   INITIAL_ACTIVE_RESERVATION,
   INITIAL_HISTORY_RECORDS,
   INITIAL_ALL_RESERVATIONS,
@@ -16,7 +14,6 @@ import {
   INITIAL_STUDENTS,
 } from './data/initialData';
 import {
-  seedFirestoreIfEmpty,
   fetchFirestoreReservations,
   saveFirestoreReservation,
   updateFirestoreReservation,
@@ -30,7 +27,8 @@ import {
   deriveBookingHistory,
   checkLocalBookingConflict,
 } from './lib/firestoreService';
-import { getSessionUser, logoutUser } from './lib/authService';
+import { getCurrentUser, logoutUser } from './lib/authService';
+import { ApiError } from './lib/apiClient';
 import { testFirestoreConnection } from './lib/firebase';
 import { Header } from './components/Header';
 import { Footer } from './components/Footer';
@@ -49,9 +47,11 @@ import { GatepassCheckerModal } from './components/modals/GatepassCheckerModal';
 import { AdminTab } from './types';
 
 export default function App() {
-  const [currentTab, setCurrentTab] = useState<ViewTab>('dashboard');
+  const [currentTab, setCurrentTab] = useState<ViewTab>('auth');
   const [adminSubTab, setAdminSubTab] = useState<AdminTab>('overview');
-  const [user, setUser] = useState<UserProfile>(() => getSessionUser() || INITIAL_USER);
+  const [user, setUser] = useState<UserProfile | null>(null);
+  const [isCheckingSession, setIsCheckingSession] = useState(true);
+  const [sessionError, setSessionError] = useState<string | null>(null);
   const [activeReservation, setActiveReservation] = useState<Reservation | null>(
     INITIAL_ACTIVE_RESERVATION
   );
@@ -84,13 +84,46 @@ export default function App() {
   // Toast notification state
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Initialize Firestore connection and sync data
   useEffect(() => {
+    let isMounted = true;
+
+    async function restoreSession() {
+      try {
+        const sessionUser = await getCurrentUser();
+        if (!isMounted) return;
+        setUser(sessionUser);
+        setCurrentTab(sessionUser ? (sessionUser.isAdmin ? 'admin' : 'dashboard') : 'auth');
+        setSessionError(null);
+      } catch (error) {
+        if (!isMounted) return;
+        setUser(null);
+        setCurrentTab('auth');
+        setSessionError(
+          error instanceof ApiError && error.status === 404
+            ? 'The running backend needs to be restarted to enable secure sessions.'
+            : error instanceof Error
+              ? error.message
+              : 'Unable to check the sign-in session.'
+        );
+      } finally {
+        if (isMounted) setIsCheckingSession(false);
+      }
+    }
+
+    void restoreSession();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // Initialize Firestore connection and sync data for authenticated users.
+  useEffect(() => {
+    if (!user) return;
+    const activeUser = user;
     let isMounted = true;
     async function initFirestore() {
       try {
         await testFirestoreConnection();
-        await seedFirestoreIfEmpty();
         const loadedReservations = await fetchFirestoreReservations();
         const loadedCourts = await fetchFirestoreCourts();
         const loadedEquipment = await fetchFirestoreEquipment();
@@ -102,14 +135,14 @@ export default function App() {
             // If active reservation exists in loaded list for current user
             const foundActive = loadedReservations.find(
               r => (r.status === 'Confirmed' || r.status === 'In Progress') &&
-                   (user.isAdmin || r.studentId === user.studentId)
+                   (activeUser.isAdmin || r.studentId === activeUser.studentId)
             );
             if (foundActive) {
               setActiveReservation(foundActive);
             }
 
             // Derive dynamic history for current user
-            const dynamicHistory = deriveBookingHistory(loadedReservations, user.studentId);
+            const dynamicHistory = deriveBookingHistory(loadedReservations, activeUser.studentId);
             if (dynamicHistory && dynamicHistory.length > 0) {
               setHistoryRecords(dynamicHistory);
             }
@@ -132,7 +165,7 @@ export default function App() {
     return () => {
       isMounted = false;
     };
-  }, [user.studentId]);
+  }, [user?.studentId]);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -143,7 +176,7 @@ export default function App() {
 
   const handleLoginSuccess = (newUser: UserProfile) => {
     setUser(newUser);
-    saveFirestoreUserProfile(newUser);
+    setSessionError(null);
     if (newUser.isAdmin) {
       setCurrentTab('admin');
       showToast(`Welcome Director ${newUser.name}! Facilities Management Desk open.`);
@@ -153,10 +186,15 @@ export default function App() {
     }
   };
 
-  const handleLogout = () => {
-    logoutUser();
-    setCurrentTab('auth');
-    showToast('Signed out of athletic directory session.');
+  const handleLogout = async () => {
+    try {
+      await logoutUser();
+      setUser(null);
+      setCurrentTab('auth');
+      showToast('Signed out of your account.');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Unable to sign out right now.');
+    }
   };
 
   const handleConfirmNewBooking = async (newRes: Reservation) => {
@@ -383,41 +421,20 @@ export default function App() {
     showToast(`Selected ${courtName} (${timeSlot}). Choose equipment and confirm.`);
   };
 
-  // If Auth screen is active
-  if (currentTab === 'auth') {
+  const visibleTab = currentTab === 'admin' && !user?.isAdmin ? 'dashboard' : currentTab;
+
+  if (isCheckingSession) {
+    return (
+      <main className="min-h-screen flex items-center justify-center bg-[#f5faff] text-[#2d4055]">
+        <p role="status" className="text-sm font-semibold">Checking your sign-in session…</p>
+      </main>
+    );
+  }
+
+  if (!user || currentTab === 'auth') {
     return (
       <div className="min-h-screen flex flex-col bg-[#f5faff]">
-        {/* Quick Portal Switch Bar at very top for instant preview testing */}
-        <div className="w-full bg-[#2d4055] text-white py-1.5 px-4 text-xs flex items-center justify-between">
-          <span className="font-medium flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-[#8cd0f8] animate-pulse" />
-            University Athletics Portal • Directory Authentication Screen
-          </span>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => {
-                setUser(INITIAL_USER);
-                setCurrentTab('dashboard');
-              }}
-              className="px-2.5 py-0.5 rounded bg-white/10 hover:bg-white/20 text-white font-semibold transition-colors flex items-center gap-1 text-[11px]"
-            >
-              <span>Preview Student View</span>
-              <span className="material-symbols-outlined text-[13px]">arrow_forward</span>
-            </button>
-            <button
-              onClick={() => {
-                setUser(INITIAL_ADMIN_USER);
-                setCurrentTab('admin');
-              }}
-              className="px-2.5 py-0.5 rounded bg-[#ddeaf3] text-[#2d4055] hover:bg-white font-semibold transition-colors flex items-center gap-1 text-[11px]"
-            >
-              <span>Preview Admin Desk</span>
-              <span className="material-symbols-outlined text-[13px]">admin_panel_settings</span>
-            </button>
-          </div>
-        </div>
-
-        <AuthScreen onLoginSuccess={handleLoginSuccess} />
+        <AuthScreen onLoginSuccess={handleLoginSuccess} systemError={sessionError} />
       </div>
     );
   }
@@ -426,7 +443,7 @@ export default function App() {
     <div className="min-h-screen flex flex-col bg-[#f5faff] text-[#111d24]">
       {/* Fixed Header */}
       <Header
-        currentTab={currentTab}
+        currentTab={visibleTab}
         onSelectTab={(tab) => {
           if (tab === 'booking-history') {
             setSchedulesSubTab('history');
@@ -434,7 +451,7 @@ export default function App() {
           } else if (tab === 'reservations') {
             setCurrentTab('reservations');
           } else if (tab === 'admin') {
-            setCurrentTab('admin');
+            if (user.isAdmin) setCurrentTab('admin');
           } else {
             setCurrentTab('dashboard');
           }
@@ -445,16 +462,21 @@ export default function App() {
         onOpenEditProfile={() => setIsEditProfileOpen(true)}
         adminSubTab={adminSubTab}
         onSelectAdminSubTab={(tab) => {
+          if (!user.isAdmin) return;
           setAdminSubTab(tab);
           setCurrentTab('admin');
         }}
-        onOpenGatepassChecker={() => setIsGatepassCheckerOpen(true)}
-        onOpenAdminReserveModal={() => setIsAdminReserveOpen(true)}
+        onOpenGatepassChecker={() => {
+          if (user.isAdmin) setIsGatepassCheckerOpen(true);
+        }}
+        onOpenAdminReserveModal={() => {
+          if (user.isAdmin) setIsAdminReserveOpen(true);
+        }}
       />
 
       {/* Main Content View with top offset for fixed navbar */}
       <main className="w-full pt-16 flex-1 bg-[#f5faff] pb-12">
-        {currentTab === 'dashboard' && (
+        {visibleTab === 'dashboard' && (
           <DashboardScreen
             user={user}
             activeReservation={activeReservation}
@@ -473,7 +495,7 @@ export default function App() {
           />
         )}
 
-        {currentTab === 'reservations' && (
+        {visibleTab === 'reservations' && (
           <ReservationFlowScreen
             user={user}
             initialSport={reserveSportType}
@@ -485,7 +507,7 @@ export default function App() {
           />
         )}
 
-        {currentTab === 'booking-history' && (
+        {visibleTab === 'booking-history' && (
           <SchedulesBookingsScreen
             user={user}
             activeReservation={activeReservation}
@@ -497,7 +519,7 @@ export default function App() {
           />
         )}
 
-        {currentTab === 'admin' && (
+        {currentTab === 'admin' && user.isAdmin && (
           <AdminDashboardScreen
             reservations={allReservations}
             courts={courts}
@@ -573,7 +595,7 @@ export default function App() {
         />
       )}
 
-      {isAdminReserveOpen && (
+      {user.isAdmin && isAdminReserveOpen && (
         <AdminReserveCourtModal
           isOpen={isAdminReserveOpen}
           courts={courts}
@@ -587,7 +609,7 @@ export default function App() {
         />
       )}
 
-      {isGatepassCheckerOpen && (
+      {user.isAdmin && isGatepassCheckerOpen && (
         <GatepassCheckerModal
           isOpen={isGatepassCheckerOpen}
           reservations={allReservations}
@@ -616,4 +638,3 @@ export default function App() {
     </div>
   );
 }
-

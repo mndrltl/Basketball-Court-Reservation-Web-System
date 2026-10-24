@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { UserProfile } from '../../types';
+import { UserAvatar } from '../UserAvatar';
 
 interface EditProfileModalProps {
   user: UserProfile;
@@ -68,10 +69,10 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
         {/* Current Avatar Preview */}
         <div className="flex items-center gap-4 p-3 bg-[#f5faff] rounded-xl border border-[#ddeaf3]">
           <div className="relative shrink-0">
-            <img
+            <UserAvatar
               src={avatarUrl || user.avatarUrl}
               alt={name}
-              className="w-14 h-14 rounded-full object-cover ring-2 ring-[#44576d]/30"
+              className="w-14 h-14 rounded-full ring-2 ring-[#44576d]/30"
             />
             <span className="absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full bg-[#44576d] ring-2 ring-white" />
           </div>

@@ -3,14 +3,13 @@ import { Reservation, CourtOption, EquipmentLoanItem, StudentMember, AdminTab, U
 import { DatePicker } from './common/DatePicker';
 import { AdminReserveCourtModal } from './modals/AdminReserveCourtModal';
 import { GatepassCheckerModal } from './modals/GatepassCheckerModal';
-import { INITIAL_ADMIN_USER } from '../data/initialData';
 
 interface AdminDashboardScreenProps {
   reservations: Reservation[];
   courts: CourtOption[];
   equipment: EquipmentLoanItem[];
   students: StudentMember[];
-  user?: UserProfile;
+  user: UserProfile;
   activeTab?: AdminTab;
   onTabChange?: (tab: AdminTab) => void;
   isAdminReserveOpen?: boolean;
@@ -1528,7 +1527,7 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
         <AdminReserveCourtModal
           isOpen={true}
           courts={courts}
-          user={user || INITIAL_ADMIN_USER}
+          user={user}
           onClose={() => {
             setIsInternalReserveOpen(false);
             onCloseAdminReserve?.();

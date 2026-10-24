@@ -32,7 +32,15 @@ export const ReservationFlowScreen: React.FC<ReservationFlowScreenProps> = ({
   const [selectedCourt, setSelectedCourt] = useState<CourtOption>(
     () => courtsToDisplay[0] || COURTS_DATA[0]
   );
-  const [selectedDay, setSelectedDay] = useState<number>(24);
+  //const [selectedDay, setSelectedDay] = useState<number>(24);
+  const [selectedDate, setSelectedDate] = useState<string>(() => {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  const day = String(today.getDate()).padStart(2, '0');
+
+  return `${year}-${month}-${day}`;
+});
   const [selectedTimeSlot, setSelectedTimeSlot] = useState<string>('04:00 PM – 05:00 PM');
   const [qtyBasketballs, setQtyBasketballs] = useState<number>(2);
   const [qtyVolleyballs, setQtyVolleyballs] = useState<number>(0);
@@ -44,7 +52,8 @@ export const ReservationFlowScreen: React.FC<ReservationFlowScreenProps> = ({
   // Created reservation to display in success modal
   const [lastCreatedReservation, setLastCreatedReservation] = useState<Reservation | null>(null);
 
-  const currentIsoDate = `2025-10-${selectedDay < 10 ? '0' + selectedDay : selectedDay}`;
+  //const currentIsoDate = `2025-10-${selectedDay < 10 ? '0' + selectedDay : selectedDay}`;
+  const currentIsoDate = selectedDate;
 
   // Dynamically compute available time slots based on reservations in database
   const dynamicSlots = computeTimeSlotAvailability(
@@ -68,6 +77,58 @@ export const ReservationFlowScreen: React.FC<ReservationFlowScreenProps> = ({
 
   const handleConfirmReservation = () => {
     setValidationError(null);
+
+      // Reject reservation dates in the past.
+  const now = new Date();
+  const today = new Date();
+  const todayIsoDate = [
+    today.getFullYear(),
+    String(today.getMonth() + 1).padStart(2, '0'),
+    String(today.getDate()).padStart(2, '0'),
+  ].join('-');
+
+  if (currentIsoDate < todayIsoDate) {
+    const err = 'You cannot book a reservation for a past date.';
+    setValidationError(err);
+    alert(err);
+    return;
+  }
+
+  // Read the starting time from the selected one-hour slot.
+  const timeMatch = selectedTimeSlot.match(
+    /^(\d{1,2}):(\d{2})\s*(AM|PM)\s*–/i
+  );
+
+  if (!timeMatch) {
+    const err = 'Invalid time slot. Please select a valid time.';
+    setValidationError(err);
+    alert(err);
+    return;
+  }
+
+  let hours = Number(timeMatch[1]);
+  const minutes = Number(timeMatch[2]);
+  const period = timeMatch[3].toUpperCase();
+
+  if (hours < 1 || hours > 12 || minutes > 59) {
+    const err = 'Invalid time slot. Please select a valid time.';
+    setValidationError(err);
+    alert(err);
+    return;
+  }
+
+  if (period === 'PM' && hours !== 12) hours += 12;
+  if (period === 'AM' && hours === 12) hours = 0;
+
+  const bookingStart = new Date(`${currentIsoDate}T00:00:00`);
+  bookingStart.setHours(hours, minutes, 0, 0);
+
+  if (bookingStart <= now) {
+    const err = 'This time slot has already started or passed. Please select a future time slot.';
+    setValidationError(err);
+    alert(err);
+    return;
+  }
 
     // 1. Check student eligibility
     if (user.eligibility === 'Suspended') {
@@ -113,7 +174,13 @@ export const ReservationFlowScreen: React.FC<ReservationFlowScreenProps> = ({
       courtName: selectedCourt.name,
       courtSub: selectedCourt.subLocation,
       facilityDetail: `${selectedCourt.name} • ${selectedCourt.badge}`,
-      dateStr: `Thursday, Oct ${selectedDay}, 2025`,
+      //dateStr: `Thursday, Oct ${selectedDay}, 2025`,
+      dateStr: new Date(`${currentIsoDate}T00:00:00`).toLocaleDateString('en-US', {
+  weekday: 'long',
+  month: 'short',
+  day: 'numeric',
+  year: 'numeric',
+}),
       isoDate: currentIsoDate,
       timeSlot: selectedTimeSlot,
       equipmentSummary: getEquipmentSummary(),
@@ -390,12 +457,9 @@ export const ReservationFlowScreen: React.FC<ReservationFlowScreenProps> = ({
                     <div className="w-44">
                       <DatePicker
                         id="stage2-quick-date-picker"
-                        value={`2025-10-${selectedDay < 10 ? '0' + selectedDay : selectedDay}`}
+                        value={selectedDate}
                         onChange={(iso) => {
-                          const parts = iso.split('-');
-                          if (parts[2]) {
-                            setSelectedDay(Number(parts[2]));
-                          }
+                          setSelectedDate(iso);
                         }}
                       />
                     </div>
@@ -418,12 +482,17 @@ export const ReservationFlowScreen: React.FC<ReservationFlowScreenProps> = ({
                     <span className="py-2 text-[#c4c6cd]">30</span>
                     {[...Array(31)].map((_, i) => {
                       const day = i + 1;
-                      const isCurrentDay = day === selectedDay;
+                      //const isCurrentDay = day === selectedDay;
+                      const isCurrentDay =
+  selectedDate === `2025-10-${String(day).padStart(2, '0')}`;
                       return (
                         <button
                           key={day}
                           type="button"
-                          onClick={() => setSelectedDay(day)}
+                         //onClick={() => setSelectedDay(day)}
+                         onClick={() => {
+  setSelectedDate(`2025-10-${String(day).padStart(2, '0')}`);
+}}
                           className={`py-2 rounded-lg font-medium transition-all ${
                             isCurrentDay
                               ? 'bg-[#2d4055] text-white font-bold shadow-xs ring-2 ring-[#2d4055]/20'
@@ -442,7 +511,14 @@ export const ReservationFlowScreen: React.FC<ReservationFlowScreenProps> = ({
                   <div className="mt-4 pt-3 border-t border-[#ddeaf3] flex items-center justify-between">
                     <div className="flex items-center gap-1.5 text-[#2d4055] font-semibold text-xs">
                       <span className="material-symbols-outlined text-[18px]">event</span>
-                      <span>Thursday, Oct {selectedDay}, 2025</span>
+                      <span>
+  {new Date(`${selectedDate}T00:00:00`).toLocaleDateString('en-US', {
+    weekday: 'long',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  })}
+</span>
                     </div>
                     <span className="text-[11px] text-[#466271]">Regulation Hours</span>
                   </div>
@@ -741,7 +817,12 @@ export const ReservationFlowScreen: React.FC<ReservationFlowScreenProps> = ({
                       Reservation Date
                     </span>
                     <p className="text-sm text-[#2d4055] font-bold" id="sum-date">
-                      Thursday, Oct {selectedDay}, 2025
+                      {new Date(`${selectedDate}T00:00:00`).toLocaleDateString('en-US', {
+  weekday: 'long',
+  month: 'short',
+  day: 'numeric',
+  year: 'numeric',
+})}
                     </p>
                     <p className="text-xs text-[#466271]">Standard Academic Schedule</p>
                   </div>

@@ -1,8 +1,6 @@
 import { CourtOption, EquipmentLoanItem, Reservation, BookingHistoryRecord, UserProfile, StudentMember } from '../types';
 
 export const ASSETS = {
-  logo: 'https://lh3.googleusercontent.com/aida/AEtjO1WPlp394KENXXXtVw6TUePXVchG2qghHnyZKsenYY4_fpe5FGrK8sJit49_dzo9OauVQY7UNsYUH9XZm3m5ckFFmcvTzGdxHGmVDmnTTrRLPcmNu-guGBlAUu8fQjEwljxe4JCFUzuyBigZ-Fow8l5FUFwNk59dbYVZCR0X-9IhiLFt-gwaJ8RMxuA9SbiNqOtbqpRcnBWulL6-YGIFV_qqf0XWZFFj_HyrgI6bJW2HX_u5myt5eKJkUFQ',
-  avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuDsBFxj6YpNiVTQ739BXeJyhTQyL7kEfFaTS1NXSsoSn22-dxkLyurY7WOzZv7nurGE4DTFG1dLUdR-3E7YhEXzIP4esRgQQboBHY-sFUuwnq4R4GLN64-ylhebgwontE3_G0FC0pe5hYlbUjO8vaunwic7-7awNrbVS05BPUgobJ8VhXKRPqcFs7ZQdM_zVMvyZXFhiFEoN7q9H1zHzB7uwDY03C4pIzTsYSRDUoeNApADvRycqCb6uUsVy0f4JEoeVC8dDBb3LkE8gw',
   basketballCourt: 'https://lh3.googleusercontent.com/aida-public/AB6AXuAzFBD5oC6pEX8_LF3Vgb7GVCSZsKjFF5TQr56o3iV4Q-2XB3JIGmv-_DGy4huzIwCzFYTxwMmPakSoJT56t0nPTKfMPTFTaI-p-t2x81LbWi8azFytHQvNe9SkkUtof3pxXbRcgOM4s8KSNENIZmSqmfkqtGT4I30psgkxSIrqom01UOCba3zCcwwcfzjGIjhTY2W0AxBXM5zdxBBWbsq-cnAPwwiPu134CvtmxLzeDK1JAt0D6v5M',
   volleyballCourt: 'https://lh3.googleusercontent.com/aida-public/AB6AXuBURInLjkcmDHLxFeZeSwL5c30udRD1nl5qTPJl8dDOJVD7Fj6pZ4aFfZqddXUnI5xRzbSL2MxcZposO-MlUVqSU7RtONVLJyqsT155oy5n-y9A2OTkE6gYZ73LJrykqm8y0YkeLeZrp3JoeUXFSTvUBfuBzQv708fvhRE14kfc5S-Ie6trnc63Gu24Q0hwvfcvzu4c54fatmug-uoFeb8eZfwgMiIT7aP9UVY1Q10r4YtnwffEOPQG',
   basketballsEquipment: 'https://lh3.googleusercontent.com/aida-public/AB6AXuALWzjksX27n9RooDV4qZr2QMjRGQvcmiBhJMiXOHaLtJaJ7d9bhWvlwsKJdMw_3kx-nE23e4z41HYZuBARMB8yjMpDvQGCZ5MO74RA2LJhshtST-pXlzgLttbzrf0HVNzaIDGxVQ22SFRsQRpAg_92nLVFRMnCAgGe6nksP8dRGMq3EIaWAKwwZH81578QmM8WmWw7bjrunamHnsyi_OEvPoQTtqx3JgPcw0RU4fbcR0TNHrcwkMSC',
@@ -15,7 +13,7 @@ export const INITIAL_USER: UserProfile = {
   email: 'jvillareal@athletics.univ.edu',
   role: 'Student Athlete',
   eligibility: 'Active Full Member',
-  avatarUrl: ASSETS.avatar,
+  avatarUrl: '',
   isAdmin: false
 };
 
@@ -25,7 +23,7 @@ export const INITIAL_ADMIN_USER: UserProfile = {
   email: 'admin@athletics.univ.edu',
   role: 'Athletic Facilities Administrator',
   eligibility: 'Faculty / Facility Staff',
-  avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=256&q=80',
+  avatarUrl: '',
   isAdmin: true
 };
 
